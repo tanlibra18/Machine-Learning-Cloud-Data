@@ -1,0 +1,553 @@
+---
+title: "Stat-154 Project 2: Cloud Data"
+author: 'Junyan Tan and Cheng Lin'
+date: "4/29/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+```
+
+# 1. Data Collection and Exploration (30 pts)
+
+## Loading Data
+```{r}
+img1 <- read.table("image1.txt")
+img2 <- read.table("image2.txt") 
+img3 <- read.table("image3.txt")
+```
+
+Merge all the tables
+```{r}
+img <- rbind(img1, img2, img3)
+```
+
+```{r}
+cols <- c("y", "x", "label", "NADI", "SD", "CORR", "DF", "CF", "BF", "AF", "AN")
+colnames(img1) <- cols
+colnames(img2) <- cols
+colnames(img3) <- cols
+colnames(img) <- cols
+```
+
+```{r}
+img
+```
+
+## Summarize the Data
+(1.b)
+```{r}
+# percentage of label -1, 0, 1 in image1 correspondingly
+sum(img1$label == -1) / nrow(img1) # 0.4377891
+sum(img1$label == 0) / nrow(img1) # 0.384556
+sum(img1$label == 1) / nrow(img1) # 0.1776549
+
+# percentage of label -1, 0, 1 in image2 correspondingly
+sum(img2$label == -1) / nrow(img2) # 0.3725306
+sum(img2$label == 0) / nrow(img2) # 0.2863522
+sum(img2$label == 1) / nrow(img2) # 0.3411172
+
+# percentage of label -1, 0, 1 in image3 correspondingly
+sum(img3$label == -1) / nrow(img3) # 0.2929429
+sum(img3$label == 0) / nrow(img3) # 0.5226746
+sum(img3$label == 1) / nrow(img3) # 0.1843825
+```
+
+```{r}
+# Get the mean, quantile for each variable of each image
+ggplot(img1, aes(x, y)) + geom_point(aes(color = label)) + labs(title = 'Image 1', x = 'X coordinate', y = 'Y coordinate')
+ggplot(img2, aes(x, y)) + geom_point(aes(color = label)) + labs(title = 'Image 2', x = 'X coordinate', y = 'Y coordinate')
+ggplot(img3, aes(x, y)) + geom_point(aes(color = label)) + labs(title = 'Image 3', x = 'X coordinate', y = 'Y coordinate')
+```
+
+## EDA
+(1.c) Perform a visual and quantitative EDA of the dataset, e.g., summarizing (i) pairwise relationship between the features themselves and (ii) the relationship between the expert labels with the individual features. Do you notice differences between the 2 two classes (cloud, no cloud) based on the radiance or other features (CORR, NDAI, SD)?
+
+(i) Pairwise relationship between the features themselves
+```{r}
+samples <- sample(1:nrow(img), 0.02*nrow(img), replace = FALSE)
+sample_img <- img[samples,]
+sample_img
+```
+
+```{r}
+library(ggplot2)
+library(GGally)
+ggpairs(sample_img, upper = list(continuous = wrap("cor", size=2)))
+# ggpairs(img1, upper = list(continuous = wrap("cor", size=2)))
+```
+
+(ii) The relationship between the expert labels with the individual features. Do you notice differences between the 2 two classes (cloud, no cloud) based on the radiance or other features (CORR, NDAI, SD)?
+```{r}
+img_labeled <- img[which(img$label != 0),]
+```
+
+```{r}
+img_labeled
+```
+
+```{r}
+boxplot(y~label, main="label v.s. y", xlab = 'label', ylab = 'y', data=img_labeled)
+boxplot(x~label, main="label v.s. x", xlab = 'label', ylab = 'x', data=img_labeled)
+boxplot(NADI~label, main="label v.s. NADI", xlab = 'label', ylab = 'NADI', data=img_labeled)
+boxplot(SD~label, main="label v.s. SD", xlab = 'label', ylab = 'SD', data=img_labeled)
+boxplot(CORR~label, main="label v.s. CORR", xlab = 'label', ylab = 'CORR', data=img_labeled)
+boxplot(DF~label, main="label v.s. DF", xlab = 'label', ylab = 'DF', data=img_labeled)
+boxplot(CF~label, main="label v.s. CF", xlab = 'label', ylab = 'CF', data=img_labeled)
+boxplot(BF~label, main="label v.s. BF", xlab = 'label', ylab = 'BF', data=img_labeled)
+boxplot(AF~label, main="label v.s. AF", xlab = 'label', ylab = 'AF', data=img_labeled)
+boxplot(AN~label, main="label v.s. AN", xlab = 'label', ylab = 'AN', data=img_labeled)
+```
+
+# 2. Preparation (40 pts)
+
+(a) (Data Split) Split the entire data (image1.txt, image2.txt, image3.txt) into three sets: training, validation and test. Think carefully about how to split the data. Suggest at least two non-trivial different ways of splitting the data which takes into account that the data is not i.i.d.
+```{r}
+library(Hmisc)
+
+label1 <- img[which(img$label == 1),]
+label0 <- img[which(img$label == 0),]
+label_n1 <- img[which(img$label == -1),]
+```
+
+Method 1
+
+64% (training) - 16% (validation) - 20% (test)
+```{r}
+library(dplyr)
+
+img_train_df <- data.frame()
+img_test_df <- data.frame()
+img_val_df <- data.frame()
+
+x_axis <- seq(65, 369, by = 4)
+y_axis <- seq(2, 383, by = 3)
+
+for (i in x_axis) {
+  for (j in y_axis) {
+    # Restrictions on images
+    img1_block <- filter(img1, x >= i & x < i + 4 & y >= j & y < j + 3)
+    img2_block <- filter(img2, x >= i & x < i + 4 & y >= j & y < j + 3)
+    img3_block <- filter(img3, x >= i & x < i + 4 & y >= j & y < j + 3)
+    
+    img1_size <- nrow(img1_block)
+    img2_size <- nrow(img2_block)
+    img3_size <- nrow(img3_block)
+    
+    if (img1_size != 0) {
+      Index <- sample(1:img1_size, size = round(0.8*img1_size), replace = FALSE)
+      img1_train_temp <- img1_block[Index,]
+      img1_test <- img1_block[-Index,]
+      
+      trainIndex <- sample(1:nrow(img1_train_temp), size = round(0.8*nrow(img1_train_temp)), replace = FALSE)
+      img1_train <- img1_train_temp[trainIndex,]
+      img1_val <- img1_train_temp[-trainIndex,]
+      
+      img_train_df <- rbind(img_train_df, img1_train)
+      img_test_df <- rbind(img_test_df, img1_test)
+      img_val_df <- rbind(img_val_df, img1_val)
+    }
+    
+    if (img2_size != 0) {
+      Index <- sample(1:img2_size, size = round(0.8*img2_size), replace = FALSE)
+      img2_train_temp <- img2_block[Index,]
+      img2_test <- img2_block[-Index,]
+      
+      trainIndex <- sample(1:nrow(img2_train_temp), size = round(0.8*nrow(img2_train_temp)), replace = FALSE)
+      img2_train <- img2_train_temp[trainIndex,]
+      img2_val <- img2_train_temp[-trainIndex,]
+      
+      img_train_df <- rbind(img_train_df, img2_train)
+      img_test_df <- rbind(img_test_df, img2_test)
+      img_val_df <- rbind(img_val_df, img2_val)
+    }
+    
+    if (img3_size != 0) {
+      Index <- sample(1:img3_size, size = round(0.8*img3_size), replace = FALSE)
+      img3_train_temp <- img3_block[Index,]
+      img3_test <- img3_block[-Index,]
+      
+      trainIndex <- sample(1:nrow(img3_train_temp), size = round(0.8*nrow(img3_train_temp)), replace = FALSE)
+      img3_train <- img3_train_temp[trainIndex,]
+      img3_val <- img3_train_temp[-trainIndex,]
+      
+      img_train_df <- rbind(img_train_df, img3_train)
+      img_test_df <- rbind(img_test_df, img3_test)
+      img_val_df <- rbind(img_val_df, img3_val)
+    }
+  }
+}
+```
+
+```{r}
+write.csv(img_train_df, file="img_train_df.csv")
+write.csv(img_test_df, file="img_test_df.csv")
+write.csv(img_val_df, file="img_val_df.csv")
+```
+
+```{r}
+img_train_df <- read.csv("img_train_df.csv")
+img_test_df <- read.csv("img_test_df.csv")
+img_val_df <- read.csv("img_val_df.csv")
+```
+
+```{r}
+nrow(img_train_df)
+nrow(img_test_df)
+nrow(img_val_df)
+```
+
+Method 2
+64% (training) - 16% (validation) - 20% (test)
+```{r}
+library(Hmisc)
+set.seed(123)
+
+index1 <- partition.vector(sample(1:nrow(label1), replace= F), c(round(nrow(label1)*0.64), round(nrow(label1)*0.16), round(nrow(label1)*0.2)))
+index0 <- partition.vector(sample(1:nrow(label0), replace= F), c(round(nrow(label0)*0.64), round(nrow(label0)*0.16), round(nrow(label0)*0.2)))
+index_n1 <- partition.vector(sample(1:nrow(label_n1), replace= F), c(round(nrow(label_n1)*0.64), round(nrow(label_n1)*0.16), round(nrow(label_n1)*0.2)))
+
+train_m2 <- rbind(label1[index1[[1]],], label_n1[index_n1[[1]],],label0[index0[[1]],] )
+val_m2 <- rbind(label1[index1[[2]],], label_n1[index_n1[[2]],], label0[index0[[2]],])
+test_m2 <- rbind(label1[index1[[3]],], label_n1[index_n1[[3]],], label0[index0[[3]],])
+```
+
+```{r}
+nrow(train_m2)
+nrow(val_m2)
+nrow(test_m2)
+```
+
+(b) (Baseline) Report the accuracy of a trivial classifier which sets all labels to -1 (cloud-free) on the validation set and on the test set. In what scenarios will such a classifier have high average accuracy? Hint: Such a step provides a baseline to ensure that the classification problems at hand is not trivial.
+```{r}
+set.seed(123)
+
+n_2b <- nrow(img)
+Index_2b <- sample(1:n_2b, size = round(0.8*n_2b), replace = FALSE)
+img_t_2b <- img[Index_2b,]
+
+m_2b <- nrow(img_t_2b)
+trainIndex_2b <- sample(1:m_2b, size = round(0.8*m_2b), replace = FALSE)
+img_train_2b <- img_t_2b[trainIndex_2b,]
+img_val_2b <- img_t_2b[-trainIndex_2b,]
+img_test_2b <- img[-Index_2b,]
+test_label_2b <- img_test_2b$label
+val_label_2b <- img_val_2b$label
+img_test_2b = subset(img_test_2b, select=-label)
+img_val_2b = subset(img_val_2b, select=-label)
+```
+
+Using QDA
+```{r}
+library(MASS)
+
+fit.qda <- qda(label ~ ., data = img_train_2b)
+pred.qda_test <- predict(fit.qda, img_test_2b)
+pred.qda_val <- predict(fit.qda, img_val_2b)
+
+test_label_2b[test_label_2b == 1] = -1
+test_label_2b[test_label_2b == 0] = -1
+val_label_2b[val_label_2b == 1] = -1
+val_label_2b[val_label_2b == 0] = -1
+#table(pred.qda$class, test_label_2b)
+# test error rate
+acu_rate_test <- mean(pred.qda_test$class == test_label_2b)
+acu_rate_test
+acu_rate_val <- mean(pred.qda_val$class == val_label_2b)
+acu_rate_val
+```
+
+(c) ((First order importance) Assuming the expert labels as the truth, and without using fancy classification methods, suggest three of the “best” features, using quantitative and visual justification. Define your “best” feature criteria clearly. Only the relevant plots are necessary. Be sure to give this careful consideration, as it relates to subsequent problems.)
+```{r}
+library(factoextra)
+set.seed(123)
+
+index_2c <- sample(1:nrow(img_train_2b), 1000, replace = F)
+data_sampled <- img_train_2b[index_2c,]
+
+data_sampled_pca <- dplyr::select(data_sampled, SD, NADI, CORR, DF, CF, BF, AF, AN)
+data_pca <- dplyr::select(img_train_2b, SD, NADI, CORR, DF, CF, BF, AF, AN)
+
+pca.data_sampled <- prcomp(data_sampled_pca, scale = T)
+pca.data <- prcomp(data_pca, scale = T)
+```
+
+```{r}
+# Plot the correlations/loadings of the variables with the components
+fviz_pca_var(pca.data, col.var = "contrib", title = 'Variables Factor Map - PCA')
+scale_color_gradient2(low = "white", mid = "red", high = "blue")
+```
+
+```{r}
+#In order to visualize the importance of PCs.                
+fviz_eig(pca.data, addlabels = T, main = 'Scree Plot', xlab = 'Principal Components', ylab = 'Percentage of Variances')
+```
+
+```{r}
+fviz_pca_ind(pca.data_sampled, 
+             geom.ind = "point",col.ind = as.factor(data_sampled$label), addEllipses = T, title = "Individuals Factor Map - PCA", legend.title = "Expert Labels")
+```
+
+## Modeling
+(3a) Try several classification methods and assess their fit using cross-validation (CV). Provide a commentary on the assumptions for the methods you tried and if they are satisfied in this case. Since CV does not have a validation set, you can merge your training and validation set to fit your CV model. Report the accuracies across folds (and not just the average across folds) and the test accuracy. CV-results for both the ways of creating folds (as answered in part 2(a)) should be reported. Provide a brief commentary on the results. Make sure you honestly mention all the classification methods you have tried.
+```{r}
+library(dplyr)
+train_m1 <- rbind(img_train_df, img_val_df)
+train_m1 <- train_m1 %>% filter(label != 0)
+x_train_m1 <- train_m1 %>% dplyr::select(x, y,label, NADI, SD, CORR)
+y_train_m1 <- train_m1$label
+
+x_test_m1 <- img_test_df %>% filter(label != 0) %>% dplyr::select(x, y, label, NADI, SD, CORR)
+y_test_m1 <- img_test_df %>% filter(label != 0)
+```
+
+```{r}
+train_m2 <- rbind(train_m2, val_m2)
+train_m2 <- train_m2 %>% filter(label != 0)
+x_train_m2 <- train_m2 %>% dplyr::select(NADI, SD, CORR)
+y_train_m2 <- train_m2$label
+
+x_test_m2 <- test_m2 %>% filter(label != 0) %>% dplyr::select(NADI, SD, CORR)
+y_test_m2 <- test_m2 %>% filter(label != 0)
+```
+
+```{r}
+qda_class <- function(x_train, y_train, x_valid) {
+  fit_qda <- qda(x_train, y_train)
+  pred_qda <- predict(fit_qda, x_valid)
+  return(list(preds = pred_qda$class, fit=fit_qda))
+}
+
+lda_class <- function(x_train, y_train, x_valid) {
+  fit_lda <- lda(x_train, y_train)
+  pred_lda <- predict(fit_lda, x_valid)
+  return(list(preds = pred_lda$class, fit=fit_lda))
+}
+
+log_class <- function(x_train, y_train, x_valid) {
+  y_train[y_train == -1] <- 0
+  train <- cbind(x_train, y_train)
+  forumla <- as.formula(paste(colnames(train)[ncol(train)], '~', paste(colnames(x_train), collapse = '+'), sep = ''))
+  fit_glm <- glm(forumla, family = 'binomial', data = train)
+  pred_glm <- round(predict(fit_glm, x_valid, type = "response"))
+  pred_glm[pred_glm == 0] = -1
+  return(list(preds = pred_glm))
+}
+
+library(randomForest)
+rf_class <- function(x_train, y_train, x_valid) {
+  train <- cbind(x_train, y_train)
+  forumla <- as.formula(paste(colnames(train)[ncol(train)], '~', paste(colnames(x_train), collapse = '+'), sep = ''))
+  fit_rf <- randomForest(forumla, data = train, importance = TRUE, proximity = TRUE)
+  pred_rf <- predict(fit_rf, x_valid)
+  return(list(preds = pred_rf))
+}  
+
+library(e1071)
+nb_class <- function(x_train, y_train, x_valid) {
+  y_train[y_train == -1] <- 0
+  train <- cbind(x_train, y_train)
+  forumla <- as.formula(paste(colnames(train)[ncol(train)], '~', paste(colnames(x_train), collapse = '+'), sep = ''))
+  fit_nb <- naiveBayes(forumla, data = train, type = "row")
+  pred_nb <- round(predict(fit_nb, x_valid, type = "raw"))[, 2]
+  pred_nb[pred_nb == 0] = -1
+  return(list(preds = pred_nb))
+}
+
+library(class)
+knn_class <- function(x_train, y_train, x_valid, KK = 4) {
+  pred_knn <- knn(train = x_train, test = x_valid, cl = y_train, k= KK)
+  return(list(preds = pred_knn))
+}
+```
+
+CV for Method 1
+```{r}
+index_rf_1 <- sample(1:nrow(x_train_m1), 1000)
+library("MASS")
+source("CV_Generic.R")
+1 - cv_generic(classifier = qda_class, x_train = x_train_m1, y_train = y_train_m1, k = 5)
+1 - cv_generic(classifier = lda_class, x_train = x_train_m1, y_train = y_train_m1, k = 5)
+1 - cv_generic(classifier = log_class, x_train = x_train_m1, y_train = y_train_m1, k = 5)
+1 - cv_generic(classifier = rf_class, x_train = x_train_m1[index_rf_1,], y_train = y_train_m1[index_rf_1], k = 5)
+1 - cv_generic(classifier = nb_class, x_train = x_train_m1, y_train = y_train_m1, k = 5)
+1 - cv_generic(classifier = knn_class, x_train = x_train_m1, y_train = y_train_m1, k = 5)
+```
+
+CV for Method 2
+```{r}
+index_rf_2 <- sample(1:nrow(x_train_m2), 1000)
+1 - cv_generic(classifier = qda_class, x_train = x_train_m2, y_train = y_train_m2, k = 5)
+1 - cv_generic(classifier = lda_class, x_train = x_train_m2, y_train = y_train_m2, k = 5)
+1 - cv_generic(classifier = log_class, x_train = x_train_m2, y_train = y_train_m2, k = 5)
+1 - cv_generic(classifier = rf_class, x_train = x_train_m2[index_rf_2,], y_train = y_train_m2[index_rf_2], k = 5)
+1 - cv_generic(classifier = nb_class, x_train = x_train_m2, y_train = y_train_m2, k = 5)
+1 - cv_generic(classifier = knn_class, x_train = x_train_m2, y_train = y_train_m2, k = 5)
+```
+
+# Testing Accuracy for Method 1
+```{r}
+qda_model_1 <- qda_class(x_train = x_train_m1, y_train = y_train_m1, x_valid = x_test_m1)
+qda_pred_1 <- predict(qda_model_1$fit, x_test_m1)
+qda_acc_1 <- 1 - error_method(y_test_m1$label, qda_pred_1$class)
+qda_acc_1
+
+lda_model_1 <- lda_class(x_train = x_train_m1, y_train = y_train_m1, x_valid = x_test_m1)
+lda_pred_1 <- predict(lda_model_1$fit, x_test_m1)
+lda_acc_1 <- 1 - error_method(y_test_m1$label, lda_pred_1$class)
+lda_acc_1
+
+log_model_1 <- log_class(x_train = x_train_m1, y_train = y_train_m1, x_valid = x_test_m1)
+log_acc_1 <- 1 - error_method(y_test_m1$label, log_model_1$preds)
+log_acc_1
+
+rf_model_1 <- rf_class(x_train = x_train_m1[index_rf_1,], y_train = y_train_m1[index_rf_1], x_valid = x_test_m1[index_rf_1,])
+rf_acc_1 <- 1 - error_method(y_test_m1$label, rf_model_1$preds)
+rf_acc_1
+
+nb_model_1 <- nb_class(x_train = x_train_m1, y_train = y_train_m1, x_valid = x_test_m1)
+nb_acc_1 <- 1 - error_method(y_test_m1$label, nb_model_1$preds)
+nb_acc_1
+
+knn_model_1 <- knn_class(x_train = x_train_m1, y_train = y_train_m1, x_valid = x_test_m1)
+knn_acc_1 <- 1 - error_method(y_test_m1$label, knn_model_1$preds)
+knn_acc_1
+```
+
+# Testing Accuracy for Method 2
+```{r}
+qda_model_2 <- qda_class(x_train = x_train_m2, y_train = y_train_m2, x_valid = x_test_m2)
+qda_pred_2 <- predict(qda_model_2$fit, x_test_m2)
+qda_acc_2 <- 1 - error_method(y_test_m2$label, qda_pred_2$class)
+qda_acc_2
+
+lda_model_2 <- lda_class(x_train = x_train_m2, y_train = y_train_m2, x_valid = x_test_m2)
+lda_pred_2 <- predict(lda_model_2$fit, x_test_m2)
+lda_acc_2 <- 1 - error_method(y_test_m2$label, lda_pred_2$class)
+lda_acc_2
+
+log_model_2 <- log_class(x_train = x_train_m2, y_train = y_train_m2, x_valid = x_test_m2)
+log_acc_2 <- 1 - error_method(y_test_m2$label, log_model_2$preds)
+log_acc_2
+
+rf_model_2 <- rf_class(x_train = x_train_m2[index_rf_2,], y_train = y_train_m2[index_rf_2], x_valid = x_test_m2[index_rf_2,])
+rf_acc_2 <- 1 - error_method(y_test_m2$label, rf_model_2$preds)
+rf_acc_2
+
+nb_model_2 <- nb_class(x_train = x_train_m2, y_train = y_train_m2, x_valid = x_test_m2)
+nb_acc_2 <- 1 - error_method(y_test_m2$label, nb_model_2$preds)
+nb_acc_2
+
+knn_model_2 <- knn_class(x_train = x_train_m2, y_train = y_train_m2, x_valid = x_test_m2)
+knn_acc_2 <- 1 - error_method(y_test_m2$label, knn_model_2$preds)
+knn_acc_2
+```
+
+(3.b) Use ROC curves to compare the different methods. Choose a cutoff value and highlight it on the ROC curve. Explain your choice of the cutoff value
+```{r}
+library(ROCR)
+library(pracma)
+# Method 1
+perf_lda <- performance(prediction(lda_pred_1$posterior[, 2], y_test_m1$label), "tpr", "fpr")
+perf_qda <- performance(prediction(qda_pred_1$posterior[, 2], y_test_m1$label), "tpr", "fpr")
+perf_lr <- performance(prediction(log_model_1$preds, y_test_m1$label), "tpr", "fpr")
+perf_nb <- performance(prediction(nb_model_1$preds, y_test_m1$label), "tpr", "fpr")
+# perf_knn <- performance(prediction(as.numeric(knn_model_1$preds), y_test_m1$label), "tpr", "fpr")
+
+df.lda <- data.frame(x=perf_lda@x.values[[1]], y=perf_lda@y.values[[1]])
+df.qda <- data.frame(x=perf_qda@x.values[[1]], y=perf_qda@y.values[[1]])
+df.lr <- data.frame(x=perf_lr@x.values[[1]], y=perf_lr@y.values[[1]])
+df.nb <- data.frame(x=perf_nb@x.values[[1]], y=perf_nb@y.values[[1]])
+df.knn <- data.frame(x=perf_knn@x.values[[1]], y=perf_knn@y.values[[1]])
+
+cut.lda <- data.frame(x=0.11, y=0.92)
+cut.qda <- data.frame(x=0.095, y=0.90)
+cut.lr <- data.frame(x=0.094197, y=0.868267)
+cut.nb <- data.frame(x=0.074197, y=0.82)
+cut.knn <- data.frame(x=0.10, y=0.89)
+cutPoint <- rbind(cut.lda, cut.qda, cut.lr, cut.nb, cut.knn)
+
+ggplot() + geom_line(data = df.lda, aes(x=x, y=y, color='lda'), alpha = 0.5) + 
+  geom_line(data = df.qda, aes(x=x, y=y, color='qda'), alpha = 0.5) + 
+  geom_line(data = df.lr, aes(x=x, y=y, color='lr'), alpha = 0.5) +
+  geom_line(data = df.nb, aes(x=x, y=y, color='nb'), alpha = 0.5) +
+  geom_line(data = df.knn, aes(x=x, y=y, color='knn'), alpha = 0.5) +
+  geom_point(data = cutPoint, aes(x=x, y=y, color = c("lda", "qda", "lr", "nb", "knn"))) + 
+  xlab("False Positive Rate") + ylab("True Positive Rate") + ggtitle("ROC curve (Method 1)") +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+```{r}
+# Method 2
+perf_lda <- performance(prediction(lda_pred_2$posterior[, 2], y_test_m2$label), "tpr", "fpr")
+perf_qda <- performance(prediction(qda_pred_2$posterior[, 2], y_test_m2$label), "tpr", "fpr")
+perf_lr <- performance(prediction(log_model_2$preds, y_test_m2$label), "tpr", "fpr")
+perf_nb <- performance(prediction(nb_model_2$preds, y_test_m2$label), "tpr", "fpr")
+# perf_knn <- performance(prediction(as.numeric(knn_model_2$preds), y_test_m2$label), "tpr", "fpr")
+
+df.lda <- data.frame(x=perf_lda@x.values[[1]], y=perf_lda@y.values[[1]])
+df.qda <- data.frame(x=perf_qda@x.values[[1]], y=perf_qda@y.values[[1]])
+df.lr <- data.frame(x=perf_lr@x.values[[1]], y=perf_lr@y.values[[1]])
+df.nb <- data.frame(x=perf_nb@x.values[[1]], y=perf_nb@y.values[[1]])
+# df.knn <- data.frame(x=perf_knn@x.values[[1]], y=perf_knn@y.values[[1]])
+
+cut.lda <- data.frame(x=0.11, y=0.92)
+cut.qda <- data.frame(x=0.095, y=0.90)
+cut.lr <- data.frame(x=0.094197, y=0.868267)
+cut.nb <- data.frame(x=0.074197, y=0.82)
+# cut.knn <- data.frame(x=0.10, y=0.89)
+cutPoint <- rbind(cut.lda, cut.qda, cut.lr, cut.nb)
+
+ggplot() + geom_line(data = df.lda, aes(x=x, y=y, color='lda'), alpha = 0.5) + 
+  geom_line(data = df.qda, aes(x=x, y=y, color='qda'), alpha = 0.5) + 
+  geom_line(data = df.lr, aes(x=x, y=y, color='lr'), alpha = 0.5) +
+  geom_line(data = df.nb, aes(x=x, y=y, color='nb'), alpha = 0.5) +
+  # geom_line(data = df.knn, aes(x=x, y=y, color='knn'), alpha = 0.5) +
+  geom_point(data = cutPoint, aes(x=x, y=y, color = c("lda", "qda", "lr", "nb"))) + 
+  xlab("False Positive Rate") + ylab("True Positive Rate") + ggtitle("ROC curve (Method 2)") +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+# Diagnostics
+
+a. Do an in-depth analysis of a good classification model of your choice by showing some diagnostic plots or information related to convergence or parameter estimation.
+```{r}
+library(class)
+
+error <- c()
+
+for (n in 1:10) {
+  dia_4a <- knn_class(x_train_m2, y_train_m2, x_test_m2, n)
+  error <- c(error, error_method(y_test_m2$label, dia_4a$preds))
+}
+```
+
+```{r}
+write.csv(error, file="error.csv")
+```
+
+```{r}
+error_4a <- read.csv("error.csv")
+```
+
+```{r}
+ggplot(error_4a, aes(x = X, y = x, color = 'red')) + geom_path() + labs(title = 'Convergence Plot for hyper-paramter k in KNN classifier', x = 'k', y = 'error')
+```
+
+b. 
+```{r}
+pred_label_4b <- knn_class(x_train_m1, y_train_m1, x_test_m1, 10)$preds
+#Don't run above
+pred_m2_4b <- x_test_m1
+pred_m2_4b$label <- pred_label_4b
+ggplot(pred_m2_4b, aes(x, y)) + geom_point(aes(color = label)) + labs(title = 'Misclassification for Test set ', x = 'X coordinate', y = 'Y coordinate')
+ggplot(x_test_m1, aes(x, y)) + geom_point(aes(color = label)) + labs(title = 'Misclassification for Control set', x = 'X coordinate', y = 'Y coordinate')
+```
+
+
+
+
+
+
