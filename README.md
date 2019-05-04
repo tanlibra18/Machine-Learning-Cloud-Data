@@ -11,5 +11,3 @@ The project consists of following parts:
 (ii) The raw Latex, Rnw or Word included in the file name: resource
 
 (iii) The R code (including separate CV function and loss function) included in the file name: code
-
-(iv) All the images in the file named: image
